@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2025-08-06
+
+### Security
+- **CRITICAL**: Fixed GDI handle memory leak in CreateTrayIcon method
+- **HIGH**: Updated Hardcodet.NotifyIcon.Wpf from v1.1.0 to v2.0.1 (addresses known vulnerabilities)
+- Added DestroyIcon P/Invoke to properly release GDI resources
+- Implemented try-finally blocks for secure resource cleanup
+- Added security configurations to project file (TreatWarningsAsErrors, EnableNETAnalyzers)
+- Fixed placeholder values in dependabot.yml configuration
+- Added SECURITY.md with vulnerability reporting policy
+
+### Added
+- Comprehensive security documentation
+- Enhanced build security with static analysis
+- Memory leak prevention measures
+
 ## [1.0.0] - 2025-08-06
 
 ### Added
