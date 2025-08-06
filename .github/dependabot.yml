@@ -9,7 +9,7 @@ updates:
       time: "09:00"
     open-pull-requests-limit: 5
     reviewers:
-      - "yourusername" # Replace with your GitHub username
+      - "sleep-deprivation-maintainer"
     labels:
       - "dependencies"
       - "nuget"
@@ -26,7 +26,7 @@ updates:
       time: "09:00"
     open-pull-requests-limit: 5
     reviewers:
-      - "yourusername" # Replace with your GitHub username
+      - "sleep-deprivation-maintainer"
     labels:
       - "dependencies"
       - "github-actions"
