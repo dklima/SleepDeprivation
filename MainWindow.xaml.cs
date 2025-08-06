@@ -7,7 +7,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using Hardcodet.Wpf.TaskbarNotification;
+using H.NotifyIcon;
 
 namespace SleepDeprivation
 {
