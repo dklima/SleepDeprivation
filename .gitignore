@@ -3,6 +3,7 @@
 [Oo]bj/
 [Oo]ut/
 build/
+build-*/
 builds/
 builds-*/
 dist/
