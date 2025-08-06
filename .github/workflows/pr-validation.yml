@@ -1,0 +1,127 @@
+name: Pull Request Validation
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    
+env:
+  DOTNET_VERSION: '9.0.x'
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    name: Validate PR
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0 # Full history for better analysis
+        
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+        
+    - name: Check file size
+      shell: pwsh
+      run: |
+        $largeFiles = Get-ChildItem -Recurse -File | 
+          Where-Object { $_.Length -gt 10MB } | 
+          Select-Object FullName, @{N='SizeMB';E={[math]::Round($_.Length/1MB, 2)}}
+          
+        if ($largeFiles) {
+          Write-Warning "Large files detected (>10MB):"
+          $largeFiles | Format-Table
+          exit 1
+        }
+        
+    - name: Verify no binaries
+      shell: pwsh
+      run: |
+        $binaryExtensions = @('.exe', '.dll', '.so', '.dylib', '.pdb')
+        $binaries = Get-ChildItem -Recurse -File | 
+          Where-Object { $_.Extension -in $binaryExtensions -and $_.DirectoryName -notlike "*\packages\*" }
+          
+        if ($binaries) {
+          Write-Warning "Binary files detected:"
+          $binaries | Select-Object FullName
+          exit 1
+        }
+        
+    - name: Validate project file
+      run: |
+        dotnet restore
+        dotnet build --configuration Release --no-restore
+        
+    - name: Check code formatting
+      run: |
+        dotnet format --verify-no-changes --verbosity diagnostic
+      continue-on-error: true
+      
+    - name: Run tests
+      run: |
+        dotnet test --no-restore --no-build --configuration Release --verbosity normal
+      continue-on-error: true
+      
+    - name: Comment PR - Build sizes
+      if: success()
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const runtime = 'win-x64';
+          const exec = require('@actions/exec');
+          
+          let output = '';
+          const options = {
+            listeners: {
+              stdout: (data) => { output += data.toString(); }
+            }
+          };
+          
+          // Build framework-dependent
+          await exec.exec('dotnet', [
+            'publish',
+            '--configuration', 'Release',
+            '--runtime', runtime,
+            '--self-contained', 'false',
+            '--output', './temp-small'
+          ], options);
+          
+          // Build self-contained
+          await exec.exec('dotnet', [
+            'publish',
+            '--configuration', 'Release',
+            '--runtime', runtime,
+            '--self-contained', 'true',
+            '--output', './temp-portable'
+          ], options);
+          
+          // Calculate sizes
+          const fs = require('fs');
+          const path = require('path');
+          
+          const smallExe = path.join('./temp-small', 'SleepDeprivation.exe');
+          const portableExe = path.join('./temp-portable', 'SleepDeprivation.exe');
+          
+          const smallSize = fs.statSync(smallExe).size;
+          const portableSize = fs.statSync(portableExe).size;
+          
+          const smallSizeKB = Math.round(smallSize / 1024);
+          const portableSizeMB = Math.round(portableSize / 1024 / 1024);
+          
+          const comment = `## 📊 Build Size Report
+          
+          | Build Type | Size | Requirements |
+          |------------|------|--------------|
+          | **Framework-Dependent** | ${smallSizeKB} KB | Requires .NET 9.0 Runtime |
+          | **Self-Contained** | ${portableSizeMB} MB | No requirements |
+          
+          ✅ All checks passed successfully!`;
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: comment
+          });

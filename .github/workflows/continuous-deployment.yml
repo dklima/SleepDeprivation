@@ -1,0 +1,147 @@
+name: Continuous Deployment
+
+on:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - '**.md'
+      - '.github/**'
+      - '.gitignore'
+      - 'LICENSE'
+  workflow_dispatch:
+
+env:
+  DOTNET_VERSION: '9.0.x'
+  PROJECT_NAME: 'SleepDeprivation'
+
+jobs:
+  deploy-nightly:
+    runs-on: windows-latest
+    name: Deploy Nightly Build
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+        
+    - name: Get commit info
+      id: commit
+      shell: pwsh
+      run: |
+        $shortSha = "${{ github.sha }}".Substring(0, 7)
+        $date = Get-Date -Format "yyyyMMdd"
+        $nightlyVersion = "nightly-$date-$shortSha"
+        
+        echo "VERSION=$nightlyVersion" >> $env:GITHUB_OUTPUT
+        echo "SHORT_SHA=$shortSha" >> $env:GITHUB_OUTPUT
+        echo "DATE=$date" >> $env:GITHUB_OUTPUT
+        
+    - name: Update version in project
+      shell: pwsh
+      run: |
+        $projectFile = "SleepDeprivation.csproj"
+        $content = Get-Content $projectFile -Raw
+        
+        # Add or update version information
+        if ($content -notmatch '<Version>') {
+          $content = $content -replace '(</PropertyGroup>)', "  <Version>1.0.0-${{ steps.commit.outputs.VERSION }}</Version>`n`$1"
+        } else {
+          $content = $content -replace '<Version>.*?</Version>', "<Version>1.0.0-${{ steps.commit.outputs.VERSION }}</Version>"
+        }
+        
+        Set-Content $projectFile $content
+        
+    - name: Build all architectures
+      shell: pwsh
+      run: |
+        $runtimes = @('win-x64', 'win-x86', 'win-arm64')
+        
+        foreach ($runtime in $runtimes) {
+          Write-Host "Building $runtime (framework-dependent)..."
+          dotnet publish `
+            --configuration Release `
+            --runtime $runtime `
+            --self-contained false `
+            --output "./nightly/$runtime-small" `
+            --verbosity minimal
+        }
+        
+    - name: Create nightly packages
+      shell: pwsh
+      run: |
+        $version = "${{ steps.commit.outputs.VERSION }}"
+        $runtimes = @('win-x64', 'win-x86', 'win-arm64')
+        
+        foreach ($runtime in $runtimes) {
+          $source = "./nightly/$runtime-small"
+          $destination = "./${{ env.PROJECT_NAME }}-$version-$runtime.zip"
+          
+          Compress-Archive -Path "$source/*" -DestinationPath $destination
+          Write-Host "Created: $destination"
+        }
+        
+    - name: Delete old nightly releases
+      uses: dev-drprasad/delete-older-releases@v0.3.3
+      with:
+        keep_latest: 3
+        delete_tag_pattern: nightly
+        delete_tags: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Create nightly release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: nightly-${{ steps.commit.outputs.DATE }}
+        release_name: Nightly Build ${{ steps.commit.outputs.DATE }}
+        body: |
+          ## 🌙 Nightly Build
+          
+          **Commit**: ${{ github.sha }}
+          **Date**: ${{ steps.commit.outputs.DATE }}
+          
+          ⚠️ **This is an automated nightly build and may be unstable.**
+          
+          ### Changes
+          ${{ github.event.head_commit.message }}
+          
+          ### Download
+          These are framework-dependent builds (~150KB) that require [.NET 9.0 Runtime](https://dotnet.microsoft.com/download/dotnet/9.0/runtime).
+          
+          For stable releases, please check the [Releases](https://github.com/${{ github.repository }}/releases) page.
+        draft: false
+        prerelease: true
+        
+    - name: Upload nightly assets
+      shell: pwsh
+      run: |
+        $uploadUrl = "${{ steps.create_release.outputs.upload_url }}"
+        $version = "${{ steps.commit.outputs.VERSION }}"
+        
+        Get-ChildItem *.zip | ForEach-Object {
+          $assetPath = $_.FullName
+          $assetName = $_.Name
+          
+          Write-Host "Uploading: $assetName"
+          
+          $headers = @{
+            "Authorization" = "Bearer ${{ secrets.GITHUB_TOKEN }}"
+            "Content-Type" = "application/zip"
+          }
+          
+          $uploadUrlClean = $uploadUrl -replace '\{.*\}', ''
+          $uploadUrlWithName = "${uploadUrlClean}?name=${assetName}"
+          
+          Invoke-WebRequest `
+            -Uri $uploadUrlWithName `
+            -Method POST `
+            -Headers $headers `
+            -InFile $assetPath
+        }

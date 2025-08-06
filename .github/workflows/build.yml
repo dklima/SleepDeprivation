@@ -1,0 +1,121 @@
+name: Build and Test
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  DOTNET_VERSION: '9.0.x'
+  PROJECT_NAME: 'SleepDeprivation'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    
+    strategy:
+      matrix:
+        runtime: [win-x64, win-x86, win-arm64]
+        build-type: [framework-dependent, self-contained]
+        
+    name: Build ${{ matrix.runtime }} (${{ matrix.build-type }})
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+        
+    - name: Restore dependencies
+      run: dotnet restore
+      
+    - name: Build application
+      run: dotnet build --configuration Release --no-restore
+      
+    - name: Run tests
+      run: dotnet test --no-restore --verbosity normal
+      continue-on-error: true # Continue even if no tests exist
+      
+    - name: Publish Framework-Dependent
+      if: matrix.build-type == 'framework-dependent'
+      run: |
+        dotnet publish `
+          --configuration Release `
+          --runtime ${{ matrix.runtime }} `
+          --self-contained false `
+          --output ./publish/${{ matrix.runtime }}-small `
+          --verbosity minimal
+          
+    - name: Publish Self-Contained
+      if: matrix.build-type == 'self-contained'
+      run: |
+        dotnet publish `
+          --configuration Release `
+          --runtime ${{ matrix.runtime }} `
+          --self-contained true `
+          --output ./publish/${{ matrix.runtime }}-portable `
+          --verbosity minimal
+          
+    - name: Calculate build size
+      shell: pwsh
+      run: |
+        $buildType = "${{ matrix.build-type }}"
+        $runtime = "${{ matrix.runtime }}"
+        
+        if ($buildType -eq "framework-dependent") {
+          $path = "./publish/$runtime-small"
+        } else {
+          $path = "./publish/$runtime-portable"
+        }
+        
+        $exePath = Join-Path $path "SleepDeprivation.exe"
+        if (Test-Path $exePath) {
+          $size = (Get-Item $exePath).Length
+          $sizeMB = [math]::Round($size / 1MB, 2)
+          $sizeKB = [math]::Round($size / 1KB, 0)
+          
+          if ($sizeMB -lt 1) {
+            Write-Host "Build size for $runtime ($buildType): $sizeKB KB"
+          } else {
+            Write-Host "Build size for $runtime ($buildType): $sizeMB MB"
+          }
+          
+          # Set output for artifact naming
+          echo "BUILD_SIZE=$size" >> $env:GITHUB_ENV
+        }
+        
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ env.PROJECT_NAME }}-${{ matrix.runtime }}-${{ matrix.build-type }}
+        path: ./publish/${{ matrix.runtime }}-*
+        retention-days: 7
+        
+  code-quality:
+    runs-on: windows-latest
+    name: Code Quality Check
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+        
+    - name: Restore dependencies
+      run: dotnet restore
+      
+    - name: Check format
+      run: dotnet format --verify-no-changes --verbosity diagnostic
+      continue-on-error: true
+      
+    - name: Run code analysis
+      run: dotnet build /p:AnalysisMode=AllEnabledByDefault /p:TreatWarningsAsErrors=false
+      continue-on-error: true

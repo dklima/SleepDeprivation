@@ -1,0 +1,228 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., v1.0.0)'
+        required: true
+        type: string
+
+env:
+  DOTNET_VERSION: '9.0.x'
+  PROJECT_NAME: 'SleepDeprivation'
+
+jobs:
+  create-release:
+    runs-on: windows-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+      version: ${{ steps.get_version.outputs.version }}
+      
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Get version
+      id: get_version
+      shell: pwsh
+      run: |
+        if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+          $version = "${{ github.event.inputs.version }}"
+        } else {
+          $version = "${{ github.ref_name }}"
+        }
+        echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+        echo "Version: $version"
+        
+    - name: Read changelog
+      id: changelog
+      shell: pwsh
+      run: |
+        $changelog = Get-Content CHANGELOG.md -Raw
+        # Extract the latest version section
+        $pattern = "## \[$($env:VERSION -replace 'v', '')\].*?(?=## \[|$)"
+        if ($changelog -match $pattern) {
+          $releaseNotes = $matches[0]
+        } else {
+          $releaseNotes = "Release $env:VERSION"
+        }
+        # GitHub Actions multiline output
+        echo "RELEASE_NOTES<<EOF" >> $env:GITHUB_OUTPUT
+        echo $releaseNotes >> $env:GITHUB_OUTPUT
+        echo "EOF" >> $env:GITHUB_OUTPUT
+        
+    - name: Create GitHub Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ steps.get_version.outputs.VERSION }}
+        release_name: ${{ env.PROJECT_NAME }} ${{ steps.get_version.outputs.VERSION }}
+        body: |
+          ## 📦 Download Options
+          
+          ### Framework-Dependent (Recommended - ~150KB)
+          Requires [.NET 9.0 Runtime](https://dotnet.microsoft.com/download/dotnet/9.0/runtime)
+          - 🖥️ **Windows x64**: Most modern PCs
+          - 🖥️ **Windows x86**: 32-bit/legacy systems
+          - 📱 **Windows ARM64**: Surface Pro X, ARM devices
+          
+          ### Self-Contained (Portable - ~150MB)
+          No .NET installation required
+          - 🖥️ **Windows x64**: Most modern PCs
+          - 🖥️ **Windows x86**: 32-bit/legacy systems
+          - 📱 **Windows ARM64**: Surface Pro X, ARM devices
+          
+          ---
+          
+          ${{ steps.changelog.outputs.RELEASE_NOTES }}
+        draft: false
+        prerelease: false
+        
+  build-and-upload:
+    needs: create-release
+    runs-on: windows-latest
+    
+    strategy:
+      matrix:
+        include:
+          # Framework-dependent builds (small)
+          - runtime: win-x64
+            build-type: framework-dependent
+            suffix: small
+            self-contained: false
+          - runtime: win-x86
+            build-type: framework-dependent
+            suffix: small
+            self-contained: false
+          - runtime: win-arm64
+            build-type: framework-dependent
+            suffix: small
+            self-contained: false
+          # Self-contained builds (portable)
+          - runtime: win-x64
+            build-type: self-contained
+            suffix: portable
+            self-contained: true
+          - runtime: win-x86
+            build-type: self-contained
+            suffix: portable
+            self-contained: true
+          - runtime: win-arm64
+            build-type: self-contained
+            suffix: portable
+            self-contained: true
+            
+    name: Build and Upload ${{ matrix.runtime }}-${{ matrix.suffix }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+        
+    - name: Restore dependencies
+      run: dotnet restore
+      
+    - name: Publish application
+      run: |
+        dotnet publish `
+          --configuration Release `
+          --runtime ${{ matrix.runtime }} `
+          --self-contained ${{ matrix.self-contained }} `
+          --output ./dist/${{ matrix.runtime }}-${{ matrix.suffix }} `
+          --verbosity minimal
+          
+    - name: Create ZIP archive
+      shell: pwsh
+      run: |
+        $source = "./dist/${{ matrix.runtime }}-${{ matrix.suffix }}"
+        $destination = "./${{ env.PROJECT_NAME }}-${{ needs.create-release.outputs.version }}-${{ matrix.runtime }}-${{ matrix.suffix }}.zip"
+        
+        # Create ZIP
+        Compress-Archive -Path "$source/*" -DestinationPath $destination
+        
+        # Calculate sizes
+        $zipSize = (Get-Item $destination).Length
+        $zipSizeMB = [math]::Round($zipSize / 1MB, 2)
+        
+        Write-Host "Created: $destination ($zipSizeMB MB)"
+        
+        # Set environment variable for upload
+        echo "ZIP_PATH=$destination" >> $env:GITHUB_ENV
+        echo "ZIP_NAME=${{ env.PROJECT_NAME }}-${{ needs.create-release.outputs.version }}-${{ matrix.runtime }}-${{ matrix.suffix }}.zip" >> $env:GITHUB_ENV
+        
+    - name: Upload Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.create-release.outputs.upload_url }}
+        asset_path: ${{ env.ZIP_PATH }}
+        asset_name: ${{ env.ZIP_NAME }}
+        asset_content_type: application/zip
+        
+  create-checksums:
+    needs: [create-release, build-and-upload]
+    runs-on: windows-latest
+    name: Generate Checksums
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Download release assets
+      shell: pwsh
+      run: |
+        $version = "${{ needs.create-release.outputs.version }}"
+        $repo = "${{ github.repository }}"
+        
+        # Get release info
+        $headers = @{
+          "Accept" = "application/vnd.github.v3+json"
+        }
+        
+        $releaseUrl = "https://api.github.com/repos/$repo/releases/tags/$version"
+        $release = Invoke-RestMethod -Uri $releaseUrl -Headers $headers
+        
+        # Download all assets
+        foreach ($asset in $release.assets) {
+          Write-Host "Downloading: $($asset.name)"
+          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $asset.name
+        }
+        
+    - name: Generate checksums
+      shell: pwsh
+      run: |
+        $version = "${{ needs.create-release.outputs.version }}"
+        
+        # Generate SHA256 checksums
+        $checksums = @()
+        Get-ChildItem *.zip | ForEach-Object {
+          $hash = (Get-FileHash -Path $_.Name -Algorithm SHA256).Hash
+          $checksums += "$hash  $($_.Name)"
+        }
+        
+        # Save to file
+        $checksums | Out-File -FilePath "checksums-sha256.txt" -Encoding UTF8
+        
+        Write-Host "Checksums generated:"
+        Get-Content "checksums-sha256.txt"
+        
+    - name: Upload checksums
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.create-release.outputs.upload_url }}
+        asset_path: ./checksums-sha256.txt
+        asset_name: ${{ env.PROJECT_NAME }}-${{ needs.create-release.outputs.version }}-checksums-sha256.txt
+        asset_content_type: text/plain
