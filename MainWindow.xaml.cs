@@ -15,6 +15,9 @@ namespace SleepDeprivation
     {
         [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
         static extern uint SetThreadExecutionState(uint esFlags);
+        
+        [DllImport("user32.dll", CharSet = CharSet.Auto)]
+        static extern bool DestroyIcon(IntPtr handle);
 
         const uint ES_CONTINUOUS = 0x80000000;
         const uint ES_SYSTEM_REQUIRED = 0x00000001;
@@ -44,7 +47,16 @@ namespace SleepDeprivation
 
             var handle = bitmap.GetHicon();
             var icon = System.Drawing.Icon.FromHandle(handle);
-            return icon;
+            
+            // Create a copy of the icon so we can safely release the original handle
+            var iconCopy = (System.Drawing.Icon)icon.Clone();
+            
+            // Now we can safely release the GDI handle
+            DestroyIcon(handle);
+            icon.Dispose();
+            bitmap.Dispose();
+            
+            return iconCopy;
         }
 
         private System.Drawing.Icon CreateActiveIcon()
