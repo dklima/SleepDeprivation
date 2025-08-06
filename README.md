@@ -29,8 +29,8 @@
 ### 📥 Download Options
 
 **Stable Releases**: [GitHub Releases](https://github.com/dklima/SleepDeprivation/releases) - Recommended for regular use  
-**Development Builds**: [GitHub Packages](https://github.com/dklima/SleepDeprivation/packages) - Latest features and fixes  
-**Nightly Builds**: Automatic builds from latest commits (found in Packages)
+**Development Builds**: [GitHub Actions Artifacts](https://github.com/dklima/SleepDeprivation/actions) - Latest features and fixes  
+**Binary Downloads**: Available for Windows x64, x86, and ARM64 architectures
 
 ### Option 1: Framework-Dependent (Recommended - Super Small)
 
@@ -53,14 +53,12 @@ For the latest features and bug fixes:
 2. Download nightly builds (framework-dependent only)
 3. **Note**: Development builds may be unstable
 
-### 📦 Package Types Available
+### 📦 Binary Types Available
 
-| Package Type       | Location                                                        | Update Frequency | Stability      | Size            |
-| ------------------ | --------------------------------------------------------------- | ---------------- | -------------- | --------------- |
-| **Release ZIPs**   | [Releases](https://github.com/dklima/SleepDeprivation/releases) | Manual releases  | ✅ Stable      | ~150KB / ~150MB |
-| **NuGet Packages** | [Packages](https://github.com/dklima/SleepDeprivation/packages) | Every commit     | ⚠️ Development | ~150KB          |
-| **Nightly ZIPs**   | [Packages](https://github.com/dklima/SleepDeprivation/packages) | Daily            | ⚠️ Development | ~150KB          |
-| **Build Artifacts** | [Actions](https://github.com/dklima/SleepDeprivation/actions) | Every commit     | ⚠️ Development | ~150KB          |
+| Binary Type          | Location                                                        | Update Frequency | Stability      | Size            |
+| -------------------- | --------------------------------------------------------------- | ---------------- | -------------- | --------------- |
+| **Release ZIPs**     | [Releases](https://github.com/dklima/SleepDeprivation/releases) | Manual releases  | ✅ Stable      | ~150KB / ~150MB |
+| **Development ZIPs** | [Actions Artifacts](https://github.com/dklima/SleepDeprivation/actions) | Every commit     | ⚠️ Development | ~150KB          |
 
 ## 🎮 Usage
 
