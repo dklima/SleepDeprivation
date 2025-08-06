@@ -74,19 +74,22 @@ jobs:
         $version = "${{ steps.version.outputs.VERSION }}"
         
         # Add version properties
-        $versionProps = @"
-    <Version>$version</Version>
-    <AssemblyVersion>${{ steps.version.outputs.PACKAGE_VERSION }}.0</AssemblyVersion>
-    <FileVersion>${{ steps.version.outputs.PACKAGE_VERSION }}.0</FileVersion>
-    <PackageVersion>$version</PackageVersion>
-    <RepositoryUrl>https://github.com/${{ github.repository }}</RepositoryUrl>
-    <RepositoryType>git</RepositoryType>
-    <PackageProjectUrl>https://github.com/${{ github.repository }}</PackageProjectUrl>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <PackageDescription>A lightweight Windows application that prevents your computer from going to sleep or turning off the display.</PackageDescription>
-    <PackageTags>windows;sleep;prevention;productivity;utility</PackageTags>
-    <Authors>Sleep Deprivation Contributors</Authors>
-"@
+        $packageVersion = "${{ steps.version.outputs.PACKAGE_VERSION }}"
+        $repoUrl = "https://github.com/${{ github.repository }}"
+        
+        $versionProps = @(
+          "    <Version>$version</Version>",
+          "    <AssemblyVersion>$packageVersion.0</AssemblyVersion>",
+          "    <FileVersion>$packageVersion.0</FileVersion>",
+          "    <PackageVersion>$version</PackageVersion>",
+          "    <RepositoryUrl>$repoUrl</RepositoryUrl>",
+          "    <RepositoryType>git</RepositoryType>",
+          "    <PackageProjectUrl>$repoUrl</PackageProjectUrl>",
+          "    <PackageLicenseExpression>MIT</PackageLicenseExpression>",
+          "    <PackageDescription>A lightweight Windows application that prevents your computer from going to sleep or turning off the display.</PackageDescription>",
+          "    <PackageTags>windows;sleep;prevention;productivity;utility</PackageTags>",
+          "    <Authors>Sleep Deprivation Contributors</Authors>"
+        ) -join "`n"
         
         if ($content -match '<PropertyGroup>') {
           $content = $content -replace '(\s*</PropertyGroup>)', "`n$versionProps`n`$1"
@@ -134,18 +137,11 @@ jobs:
         
     - name: Authenticate to GitHub Packages
       run: |
-        echo "${{ secrets.GITHUB_TOKEN }}" | dotnet nuget add source `
-          --username ${{ github.actor }} `
-          --password-stdin `
-          --store-password-in-clear-text `
-          --name github "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json"
+        echo "${{ secrets.GITHUB_TOKEN }}" | dotnet nuget add source --username ${{ github.actor }} --password-stdin --store-password-in-clear-text --name github "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json"
           
     - name: Push NuGet package
       run: |
-        dotnet nuget push "./packages/*.nupkg" `
-          --source "github" `
-          --api-key ${{ secrets.GITHUB_TOKEN }} `
-          --skip-duplicate
+        dotnet nuget push "./packages/*.nupkg" --source "github" --api-key ${{ secrets.GITHUB_TOKEN }} --skip-duplicate
           
     - name: Upload binary packages as artifacts
       uses: actions/upload-artifact@v4
@@ -154,54 +150,3 @@ jobs:
         path: ./packages/*.zip
         retention-days: 30
         
-  create-container:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-      
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Setup Docker Buildx
-      uses: docker/setup-buildx-action@v3
-      
-    - name: Log in to Container Registry
-      uses: docker/login-action@v3
-      with:
-        registry: ${{ env.REGISTRY }}
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-        
-    - name: Extract metadata
-      id: meta
-      uses: docker/metadata-action@v5
-      with:
-        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-        tags: |
-          type=ref,event=branch
-          type=ref,event=pr
-          type=semver,pattern={{version}}
-          type=semver,pattern={{major}}.{{minor}}
-          type=sha,prefix={{branch}}-
-          
-    - name: Create Dockerfile
-      run: |
-        cat > Dockerfile << 'EOF'
-        FROM mcr.microsoft.com/dotnet/aspnet:9.0-windowsservercore-ltsc2022
-        WORKDIR /app
-        COPY . .
-        ENTRYPOINT ["SleepDeprivation.exe"]
-        EOF
-        
-    - name: Build and push Docker image
-      uses: docker/build-push-action@v5
-      with:
-        context: .
-        push: true
-        tags: ${{ steps.meta.outputs.tags }}
-        labels: ${{ steps.meta.outputs.labels }}
-        platforms: windows/amd64
-        cache-from: type=gha
-        cache-to: type=gha,mode=max

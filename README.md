@@ -60,7 +60,7 @@ For the latest features and bug fixes:
 | **Release ZIPs**   | [Releases](https://github.com/dklima/SleepDeprivation/releases) | Manual releases  | ✅ Stable      | ~150KB / ~150MB |
 | **NuGet Packages** | [Packages](https://github.com/dklima/SleepDeprivation/packages) | Every commit     | ⚠️ Development | ~150KB          |
 | **Nightly ZIPs**   | [Packages](https://github.com/dklima/SleepDeprivation/packages) | Daily            | ⚠️ Development | ~150KB          |
-| **Docker Images**  | [Packages](https://github.com/dklima/SleepDeprivation/packages) | Every commit     | ⚠️ Development | Container       |
+| **Build Artifacts** | [Actions](https://github.com/dklima/SleepDeprivation/actions) | Every commit     | ⚠️ Development | ~150KB          |
 
 ## 🎮 Usage
 

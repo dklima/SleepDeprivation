@@ -44,8 +44,8 @@ This repository uses GitHub Actions for continuous integration, deployment, and 
 **Trigger**: Push to main, Releases, Manual
 - Publishes NuGet packages to GitHub Packages
 - Creates binary ZIP packages for all architectures
-- Builds Docker containers (Windows)
 - Automatic versioning for dev/release builds
+- Uploads artifacts with 30-day retention
 
 ## Configuration
 
@@ -81,17 +81,17 @@ Build artifacts are available for 7 days after each build:
 
 ## Build Matrix
 
-| Runtime | Framework-Dependent | Self-Contained | NuGet Package | Docker |
-|---------|-------------------|----------------|---------------|--------|
-| win-x64 | ✅ ~150KB | ✅ ~163MB | ✅ ZIP | ✅ Windows |
-| win-x86 | ✅ ~123KB | ✅ ~152MB | ✅ ZIP | - |
-| win-arm64 | ✅ ~150KB | ✅ ~176MB | ✅ ZIP | - |
+| Runtime | Framework-Dependent | Self-Contained | NuGet Package |
+|---------|-------------------|----------------|---------------|
+| win-x64 | ✅ ~150KB | ✅ ~163MB | ✅ ZIP |
+| win-x86 | ✅ ~123KB | ✅ ~152MB | ✅ ZIP |
+| win-arm64 | ✅ ~150KB | ✅ ~176MB | ✅ ZIP |
 
 ### Package Types
 
 - **GitHub Releases**: ZIP files for stable versions
 - **GitHub Packages**: NuGet packages + binary ZIPs for dev versions
-- **Docker Hub**: Windows containers (x64 only)
+- **Artifacts**: Build artifacts with 30-day retention
 
 ## Maintenance
 
